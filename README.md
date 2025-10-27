@@ -81,6 +81,52 @@ The workflow aggregates Sales and Subscription data, computes essential metrics,
 ```
 <img width="1599" height="703" alt="sales subscription workflow" src="https://github.com/user-attachments/assets/6a358d68-f725-4402-9901-d9b3a6c7d34c" />
 
+### Node Explanation
+
+- Trigger (Schedule)
+
+          - Runs the workflow automatically every week (e.g., every Monday at 8 AM).
+
+- Sales Data (Google Sheets node)
+
+        - Reads raw weekly sales data.
+
+        - Output goes into Compute Sales KPIs.
+
+- Compute Sales KPIs (Function node)
+
+        - Calculates metrics like total sales revenue, top product, and units sold.
+
+- Customer Data (Google Sheets node)
+
+        - Reads subscription/customer data.
+
+        - Output goes into Compute Subscription KPIs.
+
+- Compute Subscription KPIs (Function node)
+
+        - Calculates metrics like active/canceled customers, subscription revenue, etc.
+
+- Merge Node (Combine)
+
+        - Combines outputs from both “Compute Sales KPIs” and “Compute Subscription KPIs”.
+
+- Message Compute KPI (Function node)
+
+        - Formats the merged data into a clean JSON object (this is where you paste your JSON output template).
+
+- Send Email (Gmail node)
+
+        - Sends the formatted weekly report via email.
+
+- Send Slack (Slack node)
+
+        - Posts the same report to a Slack channel.
+
+- Weekly Report Log (Google Sheets node)
+
+        - Appends the JSON summary as a new row into your log sheet.
+
 ## Technical Stack
 
 - Tool: n8n
