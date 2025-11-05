@@ -1,0 +1,606 @@
+{
+  "name": "Weekly Sales & Subscription Report",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "weeks",
+              "triggerAtDay": [
+                1
+              ],
+              "triggerAtHour": 8
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        -416,
+        400
+      ],
+      "id": "f222a58d-efe0-4cf3-b290-615bf8fbd6ae",
+      "name": "Schedule Trigger",
+      "notesInFlow": true,
+      "alwaysOutputData": true,
+      "retryOnFail": true,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Get all rows from the previous node\nconst itemsData = $input.all();\nconst rows = itemsData.map(i => i.json);\n\n// Handle empty input\nif (!rows || rows.length === 0) {\n  return [\n    {\n      json: {\n        totalRevenue: \"0.00\",\n        totalUnits: 0,\n        topRegion: \"Unknown\",\n        topProduct: \"Unknown\",\n        byRegion: {},\n        byProduct: {}\n      }\n    }\n  ];\n}\n\n// Convert data types and calculate revenue\nconst sales = rows.map(r => {\n  const Quantity = Number(r.Quantity) || 0;\n  const UnitPrice = Number(r.UnitPrice) || 0;\n  const Revenue = Quantity * UnitPrice;\n\n  const Region = r.Region || \"Unknown\";\n  const Product = r.Product || \"Unknown\";\n\n  return { ...r, Quantity, UnitPrice, Revenue, Region, Product };\n});\n\n// Calculate totals\nconst totalRevenue = sales.reduce((sum, s) => sum + s.Revenue, 0);\nconst totalUnits = sales.reduce((sum, s) => sum + s.Quantity, 0);\n\n// Group by Region\nconst byRegion = {};\nfor (const s of sales) {\n  byRegion[s.Region] = (byRegion[s.Region] || 0) + s.Revenue;\n}\nconst topRegion = Object.entries(byRegion).sort((a, b) => b[1] - a[1])[0]?.[0] || \"Unknown\";\n\n// Group by Product\nconst byProduct = {};\nfor (const s of sales) {\n  byProduct[s.Product] = (byProduct[s.Product] || 0) + s.Revenue;\n}\nconst topProduct = Object.entries(byProduct).sort((a, b) => b[1] - a[1])[0]?.[0] || \"Unknown\";\n\n// Output results\nreturn [{\n  json: {\n    salesRevenue: totalRevenue.toFixed(2),\n    totalUnits,\n    topRegion,\n    topProduct,\n    byRegion,\n    byProduct\n  }\n}];\n\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        832,
+        448
+      ],
+      "id": "dfaae632-9892-4d90-8825-8567c360d69f",
+      "name": "Compute Sales KPIs",
+      "notesInFlow": true,
+      "retryOnFail": true,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "documentId": {
+          "__rl": true,
+          "value": "150B_l4QTOb4teld4tmMtD5SMMzypoj_5gF6hddmcNmQ",
+          "mode": "list",
+          "cachedResultName": "Sales_Customers_Dataset",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/150B_l4QTOb4teld4tmMtD5SMMzypoj_5gF6hddmcNmQ/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": 1127374481,
+          "mode": "list",
+          "cachedResultName": "SalesData",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/150B_l4QTOb4teld4tmMtD5SMMzypoj_5gF6hddmcNmQ/edit#gid=1127374481"
+        },
+        "combineFilters": "OR",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        400,
+        448
+      ],
+      "id": "abdc9408-a656-451c-a819-92470ee9ab57",
+      "name": "Sales Data",
+      "alwaysOutputData": true,
+      "retryOnFail": true,
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "x6FCtUEIr892wknA",
+          "name": "Google Sheets account 4"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "const rows = $input.all().map(i => i.json);\n\n// Handle empty dataset\nif (!rows || rows.length === 0) {\n  return [{\n    json: {\n      totalRevenue: 0,\n      activeCustomers: 0,\n      canceledCustomers: 0,\n      topRegion: \"Unknown\",\n      topSubscriptionType: \"Unknown\",\n      byRegion: {},\n      bySubscription: {}\n    }\n  }];\n}\n\n// Clean and convert\nconst customers = rows.map(r => {\n  const Revenue = Number(String(r.Revenue).replace(/,/g, \"\")) || 0;\n  const Region = r.Region || \"Unknown\";\n  const SubscriptionType = r.SubscriptionType || \"Unknown\";\n  const Canceled = String(r.Canceled).toLowerCase() === \"true\";\n  return { ...r, Revenue, Region, SubscriptionType, Canceled };\n});\n\n// KPIs\nconst totalRevenue = customers.reduce((sum, c) => sum + c.Revenue, 0);\nconst activeCustomers = customers.filter(c => !c.Canceled).length;\nconst canceledCustomers = customers.filter(c => c.Canceled).length;\n\n// Group by Region\nconst byRegion = {};\nfor (const c of customers) {\n  byRegion[c.Region] = (byRegion[c.Region] || 0) + c.Revenue;\n}\nconst topRegion = Object.entries(byRegion).sort((a,b) => b[1]-a[1])[0]?.[0] || \"Unknown\";\n\n// Group by Subscription\nconst bySubscription = {};\nfor (const c of customers) {\n  bySubscription[c.SubscriptionType] = (bySubscription[c.SubscriptionType] || 0) + 1;\n}\nconst topSubscriptionType = Object.entries(bySubscription).sort((a,b) => b[1]-a[1])[0]?.[0] || \"Unknown\";\n\n// Output\nreturn [{\n  json: {\n    subscriptionRevenue: totalRevenue.toFixed(2),\n    activeCustomers,\n    canceledCustomers,\n    topSubscriptionType,\n    topRegion,\n    byRegion,\n    bySubscription\n  }\n}];\n\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        848,
+        192
+      ],
+      "id": "4b7f887a-b93d-4183-895f-f90db7a3c376",
+      "name": "Subscription KPIs",
+      "notesInFlow": true,
+      "retryOnFail": true,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "mode": "combine",
+        "combineBy": "combineByPosition",
+        "options": {
+          "includeUnpaired": true
+        }
+      },
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [
+        1248,
+        304
+      ],
+      "id": "6eee9f17-74ed-40d7-92c9-a95f10cf7a85",
+      "name": "Merge",
+      "notesInFlow": true,
+      "alwaysOutputData": true,
+      "retryOnFail": true,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "sendTo": "peacejoadamu@gmail.com",
+        "subject": "Weekly Sales & Subscription Report",
+        "message": "=<html>\n  <body style=\"font-family: Arial, sans-serif; line-height: 1.6; color: #333;\">\n    <h2 style=\"color:#2a7ae2;\">📊 Weekly Sales & Subscription Report</h2>\n    <p>Hello Team,</p>\n    <p>Here’s the automated summary for this week:</p>\n\n    <!-- Sales Section -->\n    <h3 style=\"color:#2a7ae2;\">Sales KPIs</h3>\n    <table border=\"1\" cellpadding=\"6\" cellspacing=\"0\" style=\"border-collapse:collapse; width:70%;\">\n      <tr>\n        <th align=\"left\">Total Revenue</th>\n        <td>${{$json.salesRevenue}}</td>\n      </tr>\n      <tr>\n        <th align=\"left\">Total Units Sold</th>\n        <td>{{$json.totalUnits}}</td>\n      </tr>\n      <tr>\n        <th align=\"left\">Top Product</th>\n        <td>{{$json.topProduct}}</td>\n      </tr>\n      <tr>\n        <th align=\"left\">Top Region</th>\n        <td>{{$json.topRegion}}</td>\n      </tr>\n    </table>\n\n    <!-- Subscription Section -->\n    <h3 style=\"color:#2a7ae2; margin-top:20px;\">Subscription KPIs</h3>\n    <table border=\"1\" cellpadding=\"6\" cellspacing=\"0\" style=\"border-collapse:collapse; width:70%;\">\n      <tr>\n        <th align=\"left\">Total Revenue</th>\n        <td>${{$json.subscriptionRevenue}}</td>\n      </tr>\n      <tr>\n        <th align=\"left\">Active Customers</th>\n        <td>{{$json.activeCustomers}}</td>\n      </tr>\n      <tr>\n        <th align=\"left\">Canceled Customers</th>\n        <td>{{$json.canceledCustomers}}</td>\n      </tr>\n      <tr>\n        <th align=\"left\">Top Subscription Type</th>\n        <td>{{$json.topSubscriptionType}}</td>\n      </tr>\n    </table>\n\n    <p>Best regards,<br><b>n8n Automation Bot 🤖</b></p>\n  </body>\n</html>\n",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [
+        1584,
+        640
+      ],
+      "id": "a276b5a7-51fd-4cc5-af72-b4ab79ca4325",
+      "name": "Send a message",
+      "webhookId": "a7f089ec-aec0-4eed-a863-46603b0a0eea",
+      "alwaysOutputData": true,
+      "retryOnFail": true,
+      "notesInFlow": true,
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "e1rJQT5SmFFVBVFQ",
+          "name": "Gmail account"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "authentication": "oAuth2",
+        "select": "user",
+        "user": {
+          "__rl": true,
+          "value": "U09MNNU4W6T",
+          "mode": "list",
+          "cachedResultName": "peacejoadamu"
+        },
+        "messageType": "block",
+        "blocksUi": "={\n  \"blocks\": [\n    {\n      \"type\": \"header\",\n      \"text\": {\n        \"type\": \"plain_text\",\n        \"text\": \"📊 Weekly Report Summary\",\n        \"emoji\": true\n      }\n    },\n    {\n      \"type\": \"section\",\n      \"text\": {\n        \"type\": \"mrkdwn\",\n        \"text\": \"*Sales*\\n💰 *Total Revenue:* ${{ $json.salesRevenue }}\\n📦 *Total Units Sold:* {{ $json.totalUnits }}\\n🏆 *Top Product:* {{ $json.topProduct }}\\n🌍 *Top Region:* {{ $json.topRegion }}\"\n      }\n    },\n    {\n      \"type\": \"divider\"\n    },\n    {\n      \"type\": \"section\",\n      \"text\": {\n        \"type\": \"mrkdwn\",\n        \"text\": \"*Subscriptions*\\n💵 *Total Revenue:* ${{ $json.subscriptionRevenue }}\\n👥 *Active Customers:* {{ $json.activeCustomers }}\\n❌ *Canceled Customers:* {{ $json.canceledCustomers }}\\n⭐ *Top Type:* {{ $json.topSubscriptionType }}\"\n      }\n    },\n    {\n      \"type\": \"context\",\n      \"elements\": [\n        {\n          \"type\": \"mrkdwn\",\n          \"text\": \"🤖 Sent automatically via n8n\"\n        }\n      ]\n    }\n  ]\n}\n",
+        "text": "=",
+        "otherOptions": {}
+      },
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 2.3,
+      "position": [
+        1568,
+        848
+      ],
+      "id": "2569674f-bace-4f0d-b243-68fa672b61ea",
+      "name": "Send a message1",
+      "webhookId": "4778f4f2-4e8a-407a-9593-53e28655f386",
+      "notesInFlow": true,
+      "alwaysOutputData": true,
+      "retryOnFail": true,
+      "credentials": {
+        "slackOAuth2Api": {
+          "id": "pKLkY3CXU3bzskTK",
+          "name": "Slack account"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "operation": "appendOrUpdate",
+        "documentId": {
+          "__rl": true,
+          "value": "1nsjeqmGzTNfN70bdHbHg1o-Qx3vX17EYxd7SnfpodEQ",
+          "mode": "list",
+          "cachedResultName": "Weekly_Report_Log",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1nsjeqmGzTNfN70bdHbHg1o-Qx3vX17EYxd7SnfpodEQ/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "gid=0",
+          "mode": "list",
+          "cachedResultName": "Sheet1",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1nsjeqmGzTNfN70bdHbHg1o-Qx3vX17EYxd7SnfpodEQ/edit#gid=0"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Week_Start": "={{$json[\"weekStart\"]}}",
+            "Week_End": "={{$json[\"weekEnd\"]}}",
+            "Sales_Revenue": "={{$json[\"salesRevenue\"]}}",
+            "Units_Sold": "={{$json[\"totalUnits\"]}}",
+            "Top_Product": "={{$json[\"topProduct\"]}}",
+            "Top_Region": "={{$json[\"topRegion\"]}}",
+            "Sub_Revenue": "={{$json[\"subscriptionRevenue\"]}}",
+            "Active_Customers": "={{$json[\"activeCustomers\"]}}",
+            "Canceled_Customers": "={{$json[\"canceledCustomers\"]}}",
+            "Top_Sub_Type": "={{$json[\"topSubscriptionType\"]}}",
+            "Sent_By": "=Email + Slack",
+            "Timestamp": "={{$json[\"timestamp_readable\"]}}"
+          },
+          "matchingColumns": [
+            "Week_Start"
+          ],
+          "schema": [
+            {
+              "id": "Timestamp",
+              "displayName": "Timestamp",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Week_Start",
+              "displayName": "Week_Start",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Week_End",
+              "displayName": "Week_End",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Sales_Revenue",
+              "displayName": "Sales_Revenue",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Units_Sold",
+              "displayName": "Units_Sold",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Top_Product",
+              "displayName": "Top_Product",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Top_Region",
+              "displayName": "Top_Region",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Sub_Revenue",
+              "displayName": "Sub_Revenue",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Active_Customers",
+              "displayName": "Active_Customers",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Canceled_Customers",
+              "displayName": "Canceled_Customers",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Top_Sub_Type",
+              "displayName": "Top_Sub_Type",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Sent_By",
+              "displayName": "Sent_By",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "id",
+              "displayName": "id",
+              "required": false,
+              "defaultMatch": true,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "threadId",
+              "displayName": "threadId",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "labelIds",
+              "displayName": "labelIds",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "ok",
+              "displayName": "ok",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "channel",
+              "displayName": "channel",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "message",
+              "displayName": "message",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "message_timestamp",
+              "displayName": "message_timestamp",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        1584,
+        1040
+      ],
+      "id": "4642af89-1fe4-4aed-9285-079cdd03347f",
+      "name": "Weekly_Report_Log",
+      "alwaysOutputData": true,
+      "retryOnFail": true,
+      "notesInFlow": true,
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "x6FCtUEIr892wknA",
+          "name": "Google Sheets account 4"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "return [{\n  json: {\n    weekStart: $json.weekStart || $json.week_start || \"N/A\",\n    weekEnd: $json.weekEnd || $json.week_end || \"N/A\",\n\n    // Sales KPIs\n    salesRevenue: $json.salesRevenue || $json.sales_total_revenue || 0,\n    totalUnits: $json.totalUnits || $json.total_units_sold || 0,\n    topProduct: $json.topProduct || $json.top_product || \"N/A\",\n    topRegion: $json.topRegion || $json.top_region || \"N/A\",\n\n    // Subscription KPIs\n    subscriptionRevenue: $json.subscriptionRevenue || $json.subscription_total_revenue || 0,\n    activeCustomers: $json.activeCustomers || $json.active_customers || 0,\n    canceledCustomers: $json.canceledCustomers || $json.canceled_customers || 0,\n    topSubscriptionType: $json.topSubscriptionType || $json.top_subscription_type || \"N/A\"\n  }\n}];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1120,
+        880
+      ],
+      "id": "e10c219f-7998-44cd-9119-df5eb4f5cdf7",
+      "name": "Message Compute KPI",
+      "alwaysOutputData": true,
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "documentId": {
+          "__rl": true,
+          "value": "150B_l4QTOb4teld4tmMtD5SMMzypoj_5gF6hddmcNmQ",
+          "mode": "list",
+          "cachedResultName": "Sales_Customers_Dataset",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/150B_l4QTOb4teld4tmMtD5SMMzypoj_5gF6hddmcNmQ/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": 43596161,
+          "mode": "list",
+          "cachedResultName": "CustomerData",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/150B_l4QTOb4teld4tmMtD5SMMzypoj_5gF6hddmcNmQ/edit#gid=43596161"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        432,
+        240
+      ],
+      "id": "e9e3d7ba-cc63-40f7-8f6e-e92c8d2bb6bb",
+      "name": "Subscription Data",
+      "notesInFlow": true,
+      "alwaysOutputData": true,
+      "retryOnFail": true,
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "x6FCtUEIr892wknA",
+          "name": "Google Sheets account 4"
+        }
+      },
+      "onError": "continueRegularOutput"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Schedule Trigger": {
+      "main": [
+        [
+          {
+            "node": "Sales Data",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Subscription Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Sales Data": {
+      "main": [
+        [
+          {
+            "node": "Compute Sales KPIs",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Compute Sales KPIs": {
+      "main": [
+        [
+          {
+            "node": "Merge",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Subscription KPIs": {
+      "main": [
+        [
+          {
+            "node": "Merge",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Merge": {
+      "main": [
+        [
+          {
+            "node": "Message Compute KPI",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send a message": {
+      "main": [
+        []
+      ]
+    },
+    "Send a message1": {
+      "main": [
+        []
+      ]
+    },
+    "Message Compute KPI": {
+      "main": [
+        [
+          {
+            "node": "Send a message1",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Send a message",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Weekly_Report_Log",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Subscription Data": {
+      "main": [
+        [
+          {
+            "node": "Subscription KPIs",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "callerPolicy": "workflowsFromSameOwner",
+    "availableInMCP": false,
+    "errorWorkflow": "zoOWmSC1FoXzAtF2"
+  },
+  "versionId": "bc9f6b81-f62a-42ec-865f-bcdfe8974a1e",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "0059407078dc2a6338402d801e04788738d90d57e89bb1e907baf4a8742da015"
+  },
+  "id": "eU72x4pR7iqYFyW2",
+  "tags": []
+}
